@@ -17,6 +17,7 @@ export default {
         roboto: ["Roboto", "sans-serif"],
       },
       colors: {
+        bgGold: "#Ffbc01",
         background: "hsl(var(--background))",
         foreground: "hsl(var(--foreground))",
         card: {

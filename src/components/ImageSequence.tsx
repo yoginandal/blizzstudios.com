@@ -1,33 +1,36 @@
 "use client";
 
-import { motion, useScroll, useTransform } from "framer-motion";
+import { motion, useScroll, useMotionValueEvent } from "framer-motion";
 import { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import { useWindowSize } from "react-use";
 import { cn } from "@/lib/utils";
 import Image from "next/image";
 
 interface ImageSequenceProps {
-  totalFrames?: number;
   baseUrl?: string;
   mobileBaseUrl?: string;
   onImageChange?: (index: number) => void;
 }
 
 export function ImageSequence({
-  totalFrames = 254,
-  baseUrl = "https://blizzstudios.com/wp-content/uploads/laptopsq/",
-  mobileBaseUrl = "https://blizzstudios.com/wp-content/uploads/mobileseq/",
+  baseUrl = "/webp/",
+  mobileBaseUrl = "/mobileWebp/",
   onImageChange,
 }: ImageSequenceProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const { width } = useWindowSize();
-  const [imagesPreloaded, setImagesPreloaded] = useState(false);
-  const [currentImageUrl, setCurrentImageUrl] = useState("");
 
   const isMobile = width <= 450;
+
+  // Adjust according to your actual files:
+  // Desktop: 253 total images => 000 to 252
+  // Mobile: 254 total images => 000 to 253
+  const desktopFrames = 253;
+  const mobileFrames = 254;
+  const totalFrames = isMobile ? mobileFrames : desktopFrames;
+
   const imageUrlBase = isMobile ? mobileBaseUrl : baseUrl;
 
-  // Memoize image URLs
   const imageUrls = useMemo(
     () =>
       Array.from(
@@ -37,18 +40,24 @@ export function ImageSequence({
     [imageUrlBase, totalFrames]
   );
 
-  // Memoize the preload function
-  const preloadImages = useCallback(async () => {
-    try {
-      const loadImage = (url: string) =>
-        new Promise((resolve, reject) => {
-          const img = new window.Image();
-          img.src = url;
-          img.onload = resolve;
-          img.onerror = reject;
-        });
+  const [imagesPreloaded, setImagesPreloaded] = useState(false);
+  const [currentImageUrl, setCurrentImageUrl] = useState("");
 
-      // Load first 10 images with high priority
+  const preloadImages = useCallback(async () => {
+    const loadImage = (url: string) =>
+      new Promise<void>((resolve) => {
+        const img = new window.Image();
+        img.src = url;
+        img.onload = () => resolve();
+        img.onerror = () => {
+          // If an image fails to load, we log it and still resolve to avoid halting
+          console.error(`Failed to load image: ${url}`);
+          resolve();
+        };
+      });
+
+    try {
+      // Preload the first 10 images for a smooth start
       await Promise.all(imageUrls.slice(0, 10).map(loadImage));
       setImagesPreloaded(true);
 
@@ -59,11 +68,11 @@ export function ImageSequence({
         await Promise.all(chunk.map(loadImage));
       }
     } catch (error) {
+      // This catch is just in case of unexpected errors, but it shouldn't occur
       console.error("Error preloading images:", error);
     }
   }, [imageUrls]);
 
-  // Preload images
   useEffect(() => {
     preloadImages();
   }, [preloadImages]);
@@ -73,32 +82,19 @@ export function ImageSequence({
     offset: ["start start", "end end"],
   });
 
-  const imageIndex = useTransform(
-    scrollYProgress,
-    [0, 1],
-    [0, totalFrames - 1]
-  );
-
-  // Update current image based on scroll with debounce
-  const updateImage = useCallback(() => {
-    const index = Math.round(imageIndex.get());
+  useMotionValueEvent(scrollYProgress, "change", (latest) => {
+    // Calculate the current frame index based on scroll progress
+    const index = Math.round(latest * (totalFrames - 1));
     const newUrl = imageUrls[index];
-    if (newUrl !== currentImageUrl) {
+
+    if (newUrl && newUrl !== currentImageUrl) {
       setCurrentImageUrl(newUrl);
       onImageChange?.(index);
     }
-  }, [imageIndex, imageUrls, currentImageUrl, onImageChange]);
-
-  useEffect(() => {
-    const unsubscribe = imageIndex.on("change", () => {
-      requestAnimationFrame(updateImage);
-    });
-
-    return unsubscribe;
-  }, [imageIndex, updateImage]);
+  });
 
   return (
-    <div ref={containerRef} className="relative min-h-[400vh]">
+    <div ref={containerRef} className="relative min-h-[1000vh] bg-bgGold">
       <div className="sticky top-0 h-screen flex items-center justify-center z-40">
         {imagesPreloaded && currentImageUrl && (
           <motion.div

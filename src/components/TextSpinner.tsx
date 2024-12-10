@@ -32,8 +32,8 @@ export function TextSpinner({
   if (currentImageIndex >= hideAtIndex) return null;
 
   return (
-    <div className="product-header product-header--default">
-      <div className="product-header__stage">
+    <div className="product-header product-header--default bg-bgGold">
+      <div>
         <div className="fixed inset-0 flex items-center justify-center z-30">
           <div className="spinner spinner--default">
             <div className="spinner__suffix">{prefix}</div>
