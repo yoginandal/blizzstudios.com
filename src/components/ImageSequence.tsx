@@ -4,6 +4,7 @@ import { motion, useScroll, useMotionValueEvent } from "framer-motion";
 import { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import { useWindowSize } from "react-use";
 import { cn } from "@/lib/utils";
+import Image from "next/image";
 
 interface ImageSequenceProps {
   baseUrl?: string;
@@ -32,7 +33,7 @@ export function ImageSequence({
 
   // Preload management
   const [loadedImages, setLoadedImages] = useState<Set<string>>(new Set());
-  const [currentImageUrl, setCurrentImageUrl] = useState<string | null>(null);
+  const [currentImageUrl, setCurrentImageUrl] = useState("");
   const [isLoading, setIsLoading] = useState(true);
 
   const imageUrls = useMemo(
@@ -47,13 +48,13 @@ export function ImageSequence({
   const preloadImages = useCallback(async () => {
     const loadImage = (url: string) =>
       new Promise<void>((resolve) => {
-        const img = new Image();
+        const img = document.createElement("img"); // Fixed Image constructor
         img.src = url;
         img.onload = () => {
           setLoadedImages((prev) => new Set(prev).add(url));
           resolve();
         };
-        img.onerror = resolve;
+        img.onerror = () => resolve();
       });
 
     // Initial critical load
@@ -61,7 +62,7 @@ export function ImageSequence({
 
     // Progressive background loading
     imageUrls.slice(20).forEach((url, i) => {
-      setTimeout(() => loadImage(url), i * 20); // Stagger requests
+      setTimeout(() => loadImage(url), i * 20);
     });
 
     setIsLoading(false);
@@ -72,13 +73,13 @@ export function ImageSequence({
   }, [preloadImages]);
 
   const { scrollYProgress } = useScroll({
-    target: containerRef,
+    target: containerRef as React.RefObject<HTMLElement>,
     offset: ["start start", "end end"],
   });
 
   useMotionValueEvent(scrollYProgress, "change", (latest) => {
     const index = Math.min(
-      Math.max(0, Math.round(latest * (totalFrames - 1))),
+      Math.round(latest * (totalFrames - 1)),
       totalFrames - 1
     );
     const newUrl = imageUrls[index];
@@ -93,9 +94,8 @@ export function ImageSequence({
       ) {
         const url = imageUrls[i];
         if (!loadedImages.has(url)) {
-          const img = new Image();
+          const img = document.createElement("img"); // Fixed Image constructor
           img.src = url;
-          img.onload = () => setLoadedImages((prev) => new Set(prev).add(url));
         }
       }
 
@@ -116,18 +116,26 @@ export function ImageSequence({
             transition: "opacity 0.3s ease-out",
           }}
         >
-          {currentImageUrl && loadedImages.has(currentImageUrl) && (
-            <img
+          {currentImageUrl && (
+            <Image
               src={currentImageUrl}
               alt="Sequence Frame"
+              fill
+              priority={currentImageUrl === imageUrls[0]}
               className={cn(
-                "object-contain w-full h-full",
+                "object-contain",
                 "md:object-cover",
-                "transition-opacity duration-200"
+                "transition-opacity duration-200",
+                loadedImages.has(currentImageUrl) ? "opacity-100" : "opacity-0"
               )}
               style={{
                 backfaceVisibility: "hidden",
                 imageRendering: "crisp-edges",
+              }}
+              loading="eager"
+              sizes="(max-width: 768px) 100vw, 50vw"
+              onLoadingComplete={() => {
+                setLoadedImages((prev) => new Set(prev).add(currentImageUrl));
               }}
             />
           )}
@@ -135,7 +143,6 @@ export function ImageSequence({
 
         {isLoading && (
           <div className="absolute inset-0 flex items-center justify-center bg-bgGold">
-            {/* Add your loading spinner component here */}
             <div className="w-12 h-12 border-4 border-gray-300 rounded-full animate-spin border-t-primary" />
           </div>
         )}
