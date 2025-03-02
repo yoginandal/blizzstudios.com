@@ -191,3 +191,8 @@
 .product-header__stage img.active {
   opacity: 1;
 }
+
+/* Add to the :root or html element */
+html {
+  scroll-behavior: smooth;
+}
