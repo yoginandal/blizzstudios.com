@@ -19,22 +19,17 @@ export function ImageSequence({
 }: ImageSequenceProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const { width } = useWindowSize();
+
   const isMobile = width <= 450;
 
-  // Frame configuration
-  const frameConfig = {
-    desktop: { count: 253, base: baseUrl },
-    mobile: { count: 254, base: mobileBaseUrl },
-  };
+  // Adjust according to your actual files:
+  // Desktop: 253 total images => 000 to 252
+  // Mobile: 254 total images => 000 to 253
+  const desktopFrames = 253;
+  const mobileFrames = 254;
+  const totalFrames = isMobile ? mobileFrames : desktopFrames;
 
-  const { count: totalFrames, base: imageUrlBase } = isMobile
-    ? frameConfig.mobile
-    : frameConfig.desktop;
-
-  // Preload management
-  const [loadedImages, setLoadedImages] = useState<Set<string>>(new Set());
-  const [currentImageUrl, setCurrentImageUrl] = useState("");
-  const [isLoading, setIsLoading] = useState(true);
+  const imageUrlBase = isMobile ? mobileBaseUrl : baseUrl;
 
   const imageUrls = useMemo(
     () =>
@@ -45,27 +40,37 @@ export function ImageSequence({
     [imageUrlBase, totalFrames]
   );
 
+  const [imagesPreloaded, setImagesPreloaded] = useState(false);
+  const [currentImageUrl, setCurrentImageUrl] = useState("");
+
   const preloadImages = useCallback(async () => {
     const loadImage = (url: string) =>
       new Promise<void>((resolve) => {
-        const img = document.createElement("img"); // Fixed Image constructor
+        const img = new window.Image();
         img.src = url;
-        img.onload = () => {
-          setLoadedImages((prev) => new Set(prev).add(url));
+        img.onload = () => resolve();
+        img.onerror = () => {
+          // If an image fails to load, we log it and still resolve to avoid halting
+          console.error(`Failed to load image: ${url}`);
           resolve();
         };
-        img.onerror = () => resolve();
       });
 
-    // Initial critical load
-    await Promise.all(imageUrls.slice(0, 20).map(loadImage));
+    try {
+      // Preload the first 10 images for a smooth start
+      await Promise.all(imageUrls.slice(0, 10).map(loadImage));
+      setImagesPreloaded(true);
 
-    // Progressive background loading
-    imageUrls.slice(20).forEach((url, i) => {
-      setTimeout(() => loadImage(url), i * 20);
-    });
-
-    setIsLoading(false);
+      // Load remaining images in chunks
+      const chunkSize = 20;
+      for (let i = 10; i < imageUrls.length; i += chunkSize) {
+        const chunk = imageUrls.slice(i, i + chunkSize);
+        await Promise.all(chunk.map(loadImage));
+      }
+    } catch (error) {
+      // This catch is just in case of unexpected errors, but it shouldn't occur
+      console.error("Error preloading images:", error);
+    }
   }, [imageUrls]);
 
   useEffect(() => {
@@ -78,27 +83,11 @@ export function ImageSequence({
   });
 
   useMotionValueEvent(scrollYProgress, "change", (latest) => {
-    const index = Math.min(
-      Math.round(latest * (totalFrames - 1)),
-      totalFrames - 1
-    );
+    // Calculate the current frame index based on scroll progress
+    const index = Math.round(latest * (totalFrames - 1));
     const newUrl = imageUrls[index];
 
     if (newUrl && newUrl !== currentImageUrl) {
-      // Preload adjacent frames
-      const preloadWindow = 5;
-      for (
-        let i = Math.max(0, index - preloadWindow);
-        i <= Math.min(totalFrames - 1, index + preloadWindow);
-        i++
-      ) {
-        const url = imageUrls[i];
-        if (!loadedImages.has(url)) {
-          const img = document.createElement("img"); // Fixed Image constructor
-          img.src = url;
-        }
-      }
-
       setCurrentImageUrl(newUrl);
       onImageChange?.(index);
     }
@@ -107,44 +96,31 @@ export function ImageSequence({
   return (
     <div ref={containerRef} className="relative min-h-[1000vh] bg-bgGold">
       <div className="sticky top-0 h-screen flex items-center justify-center z-40">
-        <motion.div
-          style={{
-            width: "100%",
-            height: "100%",
-            position: "relative",
-            opacity: isLoading ? 0 : 1,
-            transition: "opacity 0.3s ease-out",
-          }}
-        >
-          {currentImageUrl && (
+        {imagesPreloaded && currentImageUrl && (
+          <motion.div
+            style={{
+              width: "100%",
+              height: "100%",
+              position: "relative",
+              opacity: imagesPreloaded ? 1 : 0,
+              transition: "opacity 0.5s",
+              willChange: "transform",
+            }}
+          >
             <Image
               src={currentImageUrl}
               alt="Sequence Frame"
               fill
-              priority={currentImageUrl === imageUrls[0]}
-              className={cn(
-                "object-contain",
-                "md:object-cover",
-                "transition-opacity duration-200",
-                loadedImages.has(currentImageUrl) ? "opacity-100" : "opacity-0"
-              )}
+              priority
+              className={cn("object-contain", "md:object-cover")}
               style={{
+                willChange: "contents",
                 backfaceVisibility: "hidden",
-                imageRendering: "crisp-edges",
               }}
               loading="eager"
-              sizes="(max-width: 768px) 100vw, 50vw"
-              onLoadingComplete={() => {
-                setLoadedImages((prev) => new Set(prev).add(currentImageUrl));
-              }}
+              sizes="100vw"
             />
-          )}
-        </motion.div>
-
-        {isLoading && (
-          <div className="absolute inset-0 flex items-center justify-center bg-bgGold">
-            <div className="w-12 h-12 border-4 border-gray-300 rounded-full animate-spin border-t-primary" />
-          </div>
+          </motion.div>
         )}
       </div>
     </div>
