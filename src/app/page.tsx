@@ -1,6 +1,6 @@
 "use client";
 
-import { ImageSequence } from "@/components/ImageSequence";
+import ImageSequence from "@/components/ImageSequence";
 import { TextSpinner } from "@/components/TextSpinner";
 import { useState } from "react";
 import { SmoothScroll } from "@/components/SmoothScroll";
